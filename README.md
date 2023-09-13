@@ -1,2 +1,9 @@
-# payments-engine
-Payments engine prototype in Rust
+# Payments Engine
+
+Payments engine prototype written in Rust.
+
+## Build and test
+
+## Run
+
+
