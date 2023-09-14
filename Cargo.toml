@@ -6,7 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "4.4.3"
+anyhow = "1.0.75"
+clap = { version = "4.4.3", features = ["derive"] }
 csv = "1.2.2"
 rust_decimal = "1.32.0"
 serde = { version="1.0.188", features = [ "derive" ]}
+thiserror = "1.0.48"

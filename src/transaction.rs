@@ -13,13 +13,13 @@ pub type Money = f64;
 pub struct Transaction {
     /// Transaction type is `type` in the input
     #[serde(rename = "type")]
-    transaction_type: TransactionType,
+    pub(crate) transaction_type: TransactionType,
     /// Client account id is `client` in the input
     #[serde(rename = "client")]
-    account_id: AccountId,
+    pub(crate) account_id: AccountId,
     /// Transaction id is `tx` in the input
     #[serde(rename = "tx")]
-    id: TransactionId,
+    pub(crate) id: TransactionId,
     /// Amount is optional in Dispute, Resolve, Chargeback transactions
     pub(crate) amount: Option<Money>,
     #[serde(skip)]

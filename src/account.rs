@@ -1,6 +1,7 @@
 use serde::{Serialize, Serializer};
 use std::collections::HashMap;
-use crate::transaction::{Transaction, AccountId, TransactionId};
+use crate::transaction::{Transaction, AccountId, TransactionId, TransactionType};
+use thiserror::Error;
 
 /// Amounts with serialized precision of four places past the decimal
 pub struct MoneyAggregate(pub(crate) f64);
@@ -12,6 +13,27 @@ impl Serialize for MoneyAggregate {
     {
         serializer.serialize_f64((self.0 * 1_0000.0).round() / 1_0000.0)
     }
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum Error {
+    #[error("account {0:?} is locked")]
+    AccountLocked(AccountId),
+
+    #[error("transaction {0:?} not found")]
+    TransactionNotFound(TransactionId),
+
+    #[error("account {0:?} has insufficient funds ")]
+    InsufficientFunds(AccountId),
+
+    #[error("amount is missing for transaction {0:?}")]
+    AmountMissingWhenRequired(TransactionId),
+
+    #[error("amount is present for transaction {0:?} where it is ambiguous and must be omitted")]
+    AmountPresentWhenAmbiguous(TransactionId),
+
+    #[error("state of transaction {0:?} is invalid")]
+    InvalidTransactionState(TransactionId),
 }
 
 /// A client account
@@ -44,6 +66,123 @@ impl Account {
             locked: false,
             transactions: HashMap::new()
          }
+    }
+
+    fn add_transaction(&mut self, transaction: Transaction) {
+        self.transactions.insert(transaction.id, transaction);
+    }
+
+    fn get_transaction(&mut self, id: TransactionId) -> Result<&mut Transaction, Error> {
+        let transaction = self.transactions.get_mut(&id).ok_or(Error::TransactionNotFound(id))?;
+        Ok(transaction)
+    }
+
+    fn deposit(&mut self, transaction: Transaction) -> Result<(), Error> {
+        match transaction.amount {
+            Some(amount) => {
+                self.available.0 += amount;
+                self.total.0 += amount;
+                self.add_transaction(transaction);
+                Ok(())
+            }
+            None => return Err(Error::AmountMissingWhenRequired(transaction.id))
+        }
+    }
+
+    fn withdraw(&mut self, transaction: Transaction) -> Result<(), Error> {
+        match transaction.amount {
+            Some(amount) => {
+                let available = self.available.0 - amount;
+
+                if available < 0.0 {
+                    return Err(Error::InsufficientFunds(self.id))
+                }
+
+                self.available.0 = available;
+                self.total.0 -= amount;
+                
+                self.add_transaction(transaction);
+
+                Ok(())
+            }
+            None => return Err(Error::AmountMissingWhenRequired(transaction.id))
+        }
+    }
+
+    fn dispute(&mut self, transaction: Transaction) -> Result<(), Error> {
+        match transaction.amount {
+            Some(..) => return Err(Error::AmountPresentWhenAmbiguous(transaction.id)),
+            None => {
+                let transaction = self.get_transaction(transaction.id)?;
+
+                transaction.disputed = true;
+
+                let amount = transaction.amount.ok_or(Error::AmountMissingWhenRequired(transaction.id))?;
+                
+                self.available.0 -=  amount;
+                self.held.0 +=  amount;
+
+                Ok(())
+            }
+        }
+    }
+
+    fn resolve(&mut self, transaction: Transaction) -> Result<(), Error> {
+        match transaction.amount {
+            Some(..) => return Err(Error::AmountPresentWhenAmbiguous(transaction.id)),
+            None => {
+                let transaction = self.get_transaction(transaction.id)?;
+
+                if !transaction.disputed {
+                    return Err(Error::InvalidTransactionState(transaction.id));
+                }
+
+                transaction.disputed = false;
+
+                let amount = transaction.amount.ok_or(Error::AmountMissingWhenRequired(transaction.id))?;
+                
+                self.available.0 +=  amount;
+
+                Ok(())
+            }
+        }
+    }
+
+    fn chargeback(&mut self, transaction: Transaction) -> Result<(), Error> {
+        match transaction.amount {
+            Some(..) => return Err(Error::AmountPresentWhenAmbiguous(transaction.id)),
+            None => {
+                let transaction = self.get_transaction(transaction.id)?;
+
+                if !transaction.disputed {
+                    return Err(Error::InvalidTransactionState(transaction.id));
+                }
+
+                let amount = transaction.amount.ok_or(Error::AmountMissingWhenRequired(transaction.id))?;
+                
+                self.held.0 -= amount;
+                self.total.0 -= amount;
+
+                self.locked = true;
+
+                Ok(())
+            }
+        }
+    }
+
+    /// Applies a transaction to account aggregates
+    pub(crate) fn apply_transaction(&mut self, transaction: Transaction) -> Result<(), Error> {
+        if self.locked {
+            return Err(Error::AccountLocked(self.id));
+        }
+
+        match transaction.transaction_type {
+            TransactionType::Deposit => self.deposit(transaction),
+            TransactionType::Withdrawal => self.withdraw(transaction),
+            TransactionType::Dispute => self.dispute(transaction),
+            TransactionType::Resolve => self.resolve(transaction),
+            TransactionType::Chargeback => self.chargeback(transaction)
+        }
     }
 }
 
