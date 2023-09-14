@@ -1,4 +1,3 @@
-// use rust_decimal::Decimal;
 use serde::Deserialize;
 
 /// Client Account id
@@ -8,18 +7,18 @@ pub type TransactionId = u32;
 /// Amounts with no restriction to serialized precision
 pub type Money = f64;
 
-/// A client transaction
+/// Transaction is applied to a client account
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct Transaction {
-    /// Transaction type is `type` in the input
-    #[serde(rename = "type")]
-    pub(crate) transaction_type: TransactionType,
-    /// Client account id is `client` in the input
-    #[serde(rename = "client")]
-    pub(crate) account_id: AccountId,
     /// Transaction id is `tx` in the input
     #[serde(rename = "tx")]
     pub(crate) id: TransactionId,
+    /// Client account id is `client` in the input
+    #[serde(rename = "client")]
+    pub(crate) account_id: AccountId,
+    /// Transaction type is `type` in the input
+    #[serde(rename = "type")]
+    pub(crate) transaction_type: TransactionType,
     /// Amount is optional in Dispute, Resolve, Chargeback transactions
     pub(crate) amount: Option<Money>,
     #[serde(skip)]
@@ -27,10 +26,21 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    /// Create a new transaction.
     #[cfg(test)]
-    pub(crate) fn new(transaction_type: TransactionType, client: AccountId, tx: TransactionId, amount: Option<Money>, disputed: bool) -> Self {
-        Self { transaction_type, account_id: client, id: tx, amount, disputed }
+    pub(crate) fn new(
+        transaction_type: TransactionType,
+        client: AccountId,
+        tx: TransactionId,
+        amount: Option<Money>,
+        disputed: bool,
+    ) -> Self {
+        Self {
+            transaction_type,
+            account_id: client,
+            id: tx,
+            amount,
+            disputed,
+        }
     }
 }
 
@@ -46,7 +56,7 @@ pub(crate) enum TransactionType {
     /// Resolution to a dispute, releasing the associated held funds
     Resolve,
     /// Final state of a dispute and represents the client reversing a transaction
-    Chargeback
+    Chargeback,
 }
 
 #[cfg(test)]
@@ -82,5 +92,4 @@ chargeback,      1,  1,
             assert_eq!(r, *e);
         }
     }
-
 }
